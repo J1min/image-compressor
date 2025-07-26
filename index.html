@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>사진 용량 줄이기</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="container">
+    <h1>사진 용량 줄이기</h1>
+    <input type="file" id="imageInput" accept="image/*" />
+    <div id="previewContainer">
+      <p>압축 전 미리보기:</p>
+      <img id="previewImage" />
+    </div>
+    <button id="downloadBtn" disabled>압축된 이미지 다운로드</button>
+  </div>
+  <script src="app.js" type="module"></script>
+</body>
+</html>
