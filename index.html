@@ -2,7 +2,7 @@
 <html lang="ko">
   <head>
     <meta charset="UTF-8" />
-    <title>Image Compressor with Preview & Quality</title>
+    <title>이미지 압축기</title>
     <style>
       body {
         font-family: Arial, sans-serif;
@@ -10,7 +10,9 @@
         margin: 2rem auto;
         padding: 1rem;
       }
-      input[type="range"] {
+      input[type="range"],
+      input[type="number"],
+      select {
         vertical-align: middle;
       }
       #fileList {
@@ -43,11 +45,15 @@
         margin-top: 1rem;
         padding: 0.6rem 1.2rem;
       }
+      label {
+        margin-right: 1rem;
+      }
     </style>
   </head>
   <body>
     <h2>이미지 압축기</h2>
 
+    <!-- 품질 조절 -->
     <label>
       품질 조절:
       <input
@@ -61,7 +67,46 @@
       <span id="qualityValue">0.7</span>
     </label>
 
-    <br />
+    <br /><br />
+
+    <!-- 크기 조절 -->
+    <label>
+      최대 가로:
+      <input
+        type="number"
+        id="maxWidth"
+        value="1024"
+        min="1"
+        style="width: 80px"
+      />
+    </label>
+    <label>
+      최대 세로:
+      <input
+        type="number"
+        id="maxHeight"
+        value="1024"
+        min="1"
+        style="width: 80px"
+      />
+    </label>
+    <label>
+      단위:
+      <select id="sizeUnit">
+        <option value="px">px</option>
+        <option value="%">%</option>
+      </select>
+    </label>
+
+    <br /><br />
+
+    <!-- 옵션: 원본보다 커질 경우 건너뛰기 -->
+    <label>
+      <input type="checkbox" id="skipLarger" checked />
+      원본보다 용량이 커질 경우 건너뛰기
+    </label>
+
+    <br /><br />
 
     <input type="file" id="imageInput" multiple accept="image/*" />
 
@@ -70,176 +115,238 @@
 
     <button id="downloadAllBtn" disabled>📥 전체 이미지 다운로드</button>
     <button id="saveFolderBtn">📂 폴더에 저장 (지원 브라우저 한정)</button>
-
-    <script>
-      const qualityRange = document.getElementById("qualityRange");
-      const qualityValue = document.getElementById("qualityValue");
-      const imageInput = document.getElementById("imageInput");
-      const fileList = document.getElementById("fileList");
-      const summary = document.getElementById("summary");
-      const downloadAllBtn = document.getElementById("downloadAllBtn");
-      const saveFolderBtn = document.getElementById("saveFolderBtn");
-
-      let currentQuality = parseFloat(qualityRange.value);
-      let compressedImages = [];
-
-      qualityRange.addEventListener("input", () => {
-        currentQuality = parseFloat(qualityRange.value);
-        qualityValue.textContent = currentQuality.toFixed(1);
-      });
-
-      imageInput.addEventListener("change", async (e) => {
-        const files = Array.from(e.target.files || []);
-        if (!files.length) return;
-
-        fileList.innerHTML = "";
-        summary.textContent = "";
-        compressedImages = [];
-
-        let totalOriginal = 0;
-        let totalCompressed = 0;
-
-        for (const file of files) {
-          const originalSize = file.size;
-          totalOriginal += originalSize;
-
-          try {
-            const dataUrl = await readFileAsDataURL(file);
-            const image = await loadImage(dataUrl);
-            const compressedBlob = await compressImage(image, currentQuality);
-            const compressedSize = compressedBlob.size;
-            totalCompressed += compressedSize;
-
-            compressedImages.push({ blob: compressedBlob, name: file.name });
-
-            // 썸네일 및 정보 표시
-            const li = document.createElement("li");
-            const thumb = document.createElement("img");
-            thumb.src = dataUrl;
-            thumb.alt = file.name;
-
-            const info = document.createElement("div");
-            info.id = "fileInfo";
-            info.innerHTML = `
-          <strong>${file.name}</strong><br/>
-          원본 용량: ${formatBytes(originalSize)}<br/>
-          압축 용량: ${formatBytes(compressedSize)}<br/>
-          압축률: ${compressionRate(originalSize, compressedSize)}% ↓
-        `;
-
-            li.appendChild(thumb);
-            li.appendChild(info);
-            fileList.appendChild(li);
-          } catch (err) {
-            console.error("압축 실패:", err);
-          }
-        }
-
-        summary.textContent = `총합: ${formatBytes(
-          totalOriginal
-        )} → ${formatBytes(totalCompressed)} (${compressionRate(
-          totalOriginal,
-          totalCompressed
-        )}% ↓)`;
-        downloadAllBtn.disabled = compressedImages.length === 0;
-      });
-
-      downloadAllBtn.addEventListener("click", () => {
-        compressedImages.forEach(({ blob, name }) => {
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = `compressed_${name}`;
-          document.body.appendChild(a);
-          a.click();
-          URL.revokeObjectURL(url);
-          a.remove();
-        });
-      });
-
-      saveFolderBtn.addEventListener("click", async () => {
-        if (!window.showDirectoryPicker) {
-          alert("이 브라우저는 폴더 선택 저장 기능을 지원하지 않습니다.");
-          return;
-        }
-        try {
-          const dirHandle = await window.showDirectoryPicker();
-          for (const { blob, name } of compressedImages) {
-            const fileHandle = await dirHandle.getFileHandle(
-              `compressed_${name}`,
-              { create: true }
-            );
-            const writable = await fileHandle.createWritable();
-            await writable.write(blob);
-            await writable.close();
-          }
-          alert("폴더에 저장 완료!");
-        } catch (err) {
-          alert("저장 중 오류가 발생했습니다.");
-          console.error(err);
-        }
-      });
-
-      // === Helpers ===
-      function readFileAsDataURL(file) {
-        return new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => {
-            if (typeof reader.result === "string") resolve(reader.result);
-            else reject(new Error("Invalid data URL"));
-          };
-          reader.onerror = reject;
-          reader.readAsDataURL(file);
-        });
-      }
-
-      function loadImage(src) {
-        return new Promise((resolve, reject) => {
-          const img = new Image();
-          img.onload = () => resolve(img);
-          img.onerror = reject;
-          img.src = src;
-        });
-      }
-
-      function compressImage(image, quality) {
-        return new Promise((resolve, reject) => {
-          const MAX = 1024;
-          const ratio = Math.min(MAX / image.width, MAX / image.height, 1);
-          const width = image.width * ratio;
-          const height = image.height * ratio;
-
-          const canvas = document.createElement("canvas");
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext("2d");
-          if (!ctx) return reject(new Error("Canvas not supported"));
-
-          ctx.drawImage(image, 0, 0, width, height);
-          canvas.toBlob(
-            (blob) => {
-              if (!blob) reject(new Error("압축 실패"));
-              else resolve(blob);
-            },
-            "image/webp",
-            quality
-          );
-        });
-      }
-
-      function formatBytes(bytes) {
-        const units = ["B", "KB", "MB"];
-        let i = 0;
-        while (bytes >= 1024 && i < units.length - 1) {
-          bytes /= 1024;
-          i++;
-        }
-        return `${bytes.toFixed(1)} ${units[i]}`;
-      }
-
-      function compressionRate(original, compressed) {
-        return Math.round((1 - compressed / original) * 100);
-      }
-    </script>
   </body>
+
+  <script>
+    const qualityRange = document.getElementById("qualityRange");
+    const qualityValue = document.getElementById("qualityValue");
+    const imageInput = document.getElementById("imageInput");
+    const fileList = document.getElementById("fileList");
+    const summary = document.getElementById("summary");
+    const downloadAllBtn = document.getElementById("downloadAllBtn");
+    const saveFolderBtn = document.getElementById("saveFolderBtn");
+    const sizeUnit = document.getElementById("sizeUnit");
+    const maxWidthInput = document.getElementById("maxWidth");
+    const maxHeightInput = document.getElementById("maxHeight");
+    const skipLargerCheckbox = document.getElementById("skipLarger");
+
+    let currentQuality = parseFloat(qualityRange.value);
+    let compressedImages = [];
+    let originalImages = [];
+
+    // 품질 변경 시 즉시 업데이트
+    qualityRange.addEventListener("input", () => {
+      currentQuality = parseFloat(qualityRange.value);
+      qualityValue.textContent = currentQuality.toFixed(1);
+      if (originalImages.length > 0) processImages();
+    });
+
+    // 크기 변경 시 즉시 업데이트
+    maxWidthInput.addEventListener("input", () => {
+      if (originalImages.length > 0) processImages();
+    });
+    maxHeightInput.addEventListener("input", () => {
+      if (originalImages.length > 0) processImages();
+    });
+
+    // 단위 변경 시 값 변경 + 즉시 업데이트
+    sizeUnit.addEventListener("change", () => {
+      if (sizeUnit.value === "%") {
+        maxWidthInput.value = 100;
+        maxHeightInput.value = 100;
+      } else {
+        maxWidthInput.value = 1024;
+        maxHeightInput.value = 1024;
+      }
+      if (originalImages.length > 0) processImages();
+    });
+
+    // 체크박스 변경 시 즉시 업데이트
+    skipLargerCheckbox.addEventListener("change", () => {
+      if (originalImages.length > 0) processImages();
+    });
+
+    // 파일 선택 시 처리
+    imageInput.addEventListener("change", async (e) => {
+      const files = Array.from(e.target.files || []);
+      if (!files.length) return;
+      originalImages = [];
+      for (const file of files) {
+        const dataUrl = await readFileAsDataURL(file);
+        const img = await loadImage(dataUrl);
+        originalImages.push({ img, name: file.name, size: file.size });
+      }
+      processImages();
+    });
+
+    // 이미지 처리
+    async function processImages() {
+      fileList.innerHTML = "";
+      summary.textContent = "";
+      compressedImages = [];
+
+      let totalOriginal = 0;
+      let totalCompressed = 0;
+
+      for (const { img, name, size: originalSize } of originalImages) {
+        totalOriginal += originalSize;
+        try {
+          let compressedBlob = await compressImage(img, currentQuality);
+
+          // 건너뛰기 옵션 적용
+          if (
+            skipLargerCheckbox.checked &&
+            compressedBlob.size > originalSize
+          ) {
+            compressedBlob = await fetch(img.src).then((r) => r.blob()); // 원본 그대로
+          }
+
+          const compressedSize = compressedBlob.size;
+          totalCompressed += compressedSize;
+
+          compressedImages.push({ blob: compressedBlob, name });
+
+          const li = document.createElement("li");
+          const thumb = document.createElement("img");
+          thumb.src = URL.createObjectURL(compressedBlob);
+          thumb.alt = name;
+
+          const info = document.createElement("div");
+          info.id = "fileInfo";
+          info.innerHTML = `
+            <strong>${name}</strong><br/>
+            원본 용량: ${formatBytes(originalSize)}<br/>
+            압축 용량: ${formatBytes(compressedSize)}<br/>
+            압축률: ${compressionRate(originalSize, compressedSize)}% ↓
+          `;
+
+          li.appendChild(thumb);
+          li.appendChild(info);
+          fileList.appendChild(li);
+        } catch (err) {
+          console.error("압축 실패:", err);
+        }
+      }
+
+      summary.textContent = `총합: ${formatBytes(
+        totalOriginal
+      )} → ${formatBytes(totalCompressed)} (${compressionRate(
+        totalOriginal,
+        totalCompressed
+      )}% ↓)`;
+      downloadAllBtn.disabled = compressedImages.length === 0;
+    }
+
+    // 다운로드
+    downloadAllBtn.addEventListener("click", () => {
+      compressedImages.forEach(({ blob, name }) => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `compressed_${name}`;
+        document.body.appendChild(a);
+        a.click();
+        URL.revokeObjectURL(url);
+        a.remove();
+      });
+    });
+
+    // 폴더 저장
+    saveFolderBtn.addEventListener("click", async () => {
+      if (!window.showDirectoryPicker) {
+        alert("이 브라우저는 폴더 선택 저장 기능을 지원하지 않습니다.");
+        return;
+      }
+      try {
+        const dirHandle = await window.showDirectoryPicker();
+        for (const { blob, name } of compressedImages) {
+          const fileHandle = await dirHandle.getFileHandle(
+            `compressed_${name}`,
+            { create: true }
+          );
+          const writable = await fileHandle.createWritable();
+          await writable.write(blob);
+          await writable.close();
+        }
+        alert("폴더에 저장 완료!");
+      } catch (err) {
+        alert("저장 중 오류 발생");
+        console.error(err);
+      }
+    });
+
+    // 헬퍼
+    function readFileAsDataURL(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () =>
+          typeof reader.result === "string"
+            ? resolve(reader.result)
+            : reject(new Error("Invalid data URL"));
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function loadImage(src) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = reject;
+        img.src = src;
+      });
+    }
+
+    function compressImage(image, quality) {
+      return new Promise((resolve, reject) => {
+        const unit = sizeUnit.value;
+        const maxW = parseFloat(maxWidthInput.value);
+        const maxH = parseFloat(maxHeightInput.value);
+
+        let targetW, targetH;
+        if (unit === "px") {
+          targetW = maxW || image.width;
+          targetH = maxH || image.height;
+        } else {
+          targetW = Math.round(image.width * (maxW / 100));
+          targetH = Math.round(image.height * (maxH / 100));
+        }
+
+        const ratio = Math.min(
+          targetW / image.width,
+          targetH / image.height,
+          1
+        );
+        const width = Math.round(image.width * ratio);
+        const height = Math.round(image.height * ratio);
+
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return reject(new Error("Canvas not supported"));
+
+        ctx.drawImage(image, 0, 0, width, height);
+        canvas.toBlob(
+          (blob) => (blob ? resolve(blob) : reject(new Error("압축 실패"))),
+          "image/webp",
+          quality
+        );
+      });
+    }
+
+    function formatBytes(bytes) {
+      const units = ["B", "KB", "MB"];
+      let i = 0;
+      while (bytes >= 1024 && i < units.length - 1) {
+        bytes /= 1024;
+        i++;
+      }
+      return `${bytes.toFixed(1)} ${units[i]}`;
+    }
+
+    function compressionRate(original, compressed) {
+      return Math.round((1 - compressed / original) * 100);
+    }
+  </script>
 </html>
